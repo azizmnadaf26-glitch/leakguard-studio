@@ -11,12 +11,16 @@ import SettingsPage from './components/SettingsPage';
 import OwnershipVerifier from './components/OwnershipVerifier';
 import LeakDetectionScanner from './components/LeakDetectionScanner';
 import SellArt from './components/SellArtPage';
+import PortfolioMatcher from './components/PortfolioMatcher';
+import SearchResultsGallery from './components/SearchResultsGallery';
 
 function MainApp() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [activePage, setActivePage] = useState('home');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [walletAddress, setWalletAddress] = useState(null);
+  const [selectedArtistProfile, setSelectedArtistProfile] = useState(null);
+  const [searchResults, setSearchResults] = useState(null);
 
   // Line 18: IF / ELSE navigation guard
   const handlePageChange = (pageId) => {
@@ -37,6 +41,7 @@ function MainApp() {
         onOpenAuth={() => setShowAuthModal(true)}
         walletAddress={walletAddress}
         setWalletAddress={setWalletAddress}
+        setSearchResults={setSearchResults}
       />
 
       <main className="flex-1">
@@ -45,6 +50,8 @@ function MainApp() {
             setActivePage={handlePageChange} 
             isLoggedIn={isLoggedIn}
             onOpenAuth={() => setShowAuthModal(true)} 
+            setSelectedArtistProfile={setSelectedArtistProfile}
+            walletAddress={walletAddress}
           />
         )}
         
@@ -63,7 +70,7 @@ function MainApp() {
         )}
         
         {activePage === 'tutorials' && <TutorialsPage />}
-        {activePage === 'profile' && <ProfilePage />}
+        {activePage === 'profile' && <ProfilePage selectedArtistProfile={selectedArtistProfile} />}
         {activePage === 'settings' && <SettingsPage />}
 
         {activePage === 'ownership' && (
@@ -78,10 +85,29 @@ function MainApp() {
           </div>
         )}
 
+        {activePage === 'matcher' && (
+          <div className="py-8 px-4 flex justify-center">
+            <div className="w-full max-w-7xl">
+              <PortfolioMatcher />
+            </div>
+          </div>
+        )}
+
         {activePage === 'sell' && (
           <div className="py-8 px-4 flex justify-center">
-            <SellArt />
+            <SellArt 
+              isLoggedIn={isLoggedIn}
+              onOpenAuth={() => setShowAuthModal(true)}
+            />
           </div>
+        )}
+
+        {activePage === 'search' && (
+          <SearchResultsGallery 
+            searchResults={searchResults} 
+            isLoggedIn={isLoggedIn} 
+            onOpenAuth={() => setShowAuthModal(true)} 
+          />
         )}
       </main>
       

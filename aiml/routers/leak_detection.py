@@ -1,34 +1,56 @@
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, UploadFile, File, Request
 import hashlib
 import cv2
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+from .embedding_utils import get_embedding
 
 router = APIRouter(prefix="/api/ai", tags=["Leak Detection"])
 
-KNOWN_FINGERPRINTS = {
-    "original_art_01": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "thumbnail_sample": "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e"
-}
-
 @router.post("/leakDetection")
-async def detect_leak(file: UploadFile = File(...)):
+async def detect_leak(request: Request, file: UploadFile = File(...)):
     contents = await file.read()
     
     # Generate SHA-256 fingerprint
     sha256_hash = hashlib.sha256(contents).hexdigest()
     
-    # Process image structure
+    # Generate PyTorch embedding for visual similarity
+    target_embedding = get_embedding(contents)
+    
+    # Process image structure for basic metadata (optional, kept from original)
     nparr = np.frombuffer(contents, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
-    is_exact_match = sha256_hash in KNOWN_FINGERPRINTS.values()
+    # Check PostgreSQL for exact match and embedding match
+    db = request.app.state.db
+    is_exact_match = False
+    highest_sim = 0.0
+    
+    async with db.acquire() as conn:
+        records = await conn.fetch('SELECT asset_hash, embedding FROM fingerprints')
+        for r in records:
+            if r['asset_hash'] == sha256_hash:
+                is_exact_match = True
+            
+            db_emb = r['embedding']
+            if db_emb and target_embedding:
+                # Calculate cosine similarity
+                sim = cosine_similarity([target_embedding], [db_emb])[0][0]
+                if sim > highest_sim:
+                    highest_sim = sim
     
     if is_exact_match:
         duplicate_score = 100.0
         ai_confidence = 0.99
         is_leak = True
-        status_message = "LEAK DETECTED: Asset matches registered on-chain fingerprint!"
+        status_message = "LEAK DETECTED: Asset matches registered on-chain fingerprint exactly!"
+    elif highest_sim > 0.90:  # 90% visual similarity threshold
+        duplicate_score = round(highest_sim * 100, 2)
+        ai_confidence = 0.95
+        is_leak = True
+        status_message = f"LEAK DETECTED: Asset is visually similar ({duplicate_score}%) to a registered asset!"
     else:
+        # Fallback to the original mock score if no match found
         duplicate_score = round(float((int(sha256_hash[:4], 16) % 20)), 2)
         ai_confidence = 0.95
         is_leak = duplicate_score > 75.0

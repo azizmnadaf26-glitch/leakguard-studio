@@ -1,12 +1,17 @@
 import { useState } from 'react';
+import { useWallet } from '@txnlab/use-wallet-react';
+import { executeWithX402Payment } from '../utils/x402Payment';
 
 export default function PortfolioMatcher() {
+  const { activeAddress, transactionSigner } = useWallet();
   const [autoMatch, setAutoMatch] = useState(true);
   const [selectedCandidateId, setSelectedCandidateId] = useState('c-1');
   const [searchQuery, setSearchQuery] = useState('UX/UI Designer');
+  const [status, setStatus] = useState('idle');
+  const [errorMsg, setErrorMsg] = useState('');
 
   // Match Candidates List
-  const candidates = [
+  const [candidates, setCandidates] = useState([
     {
       id: 'c-1',
       name: 'Product Designer',
@@ -97,9 +102,68 @@ export default function PortfolioMatcher() {
         { text: 'Conducted 35 in-depth user interviews with medical professionals', tag: 'Health-UX' }
       ]
     }
-  ];
+  ]);
 
   const currentCandidate = candidates.find((c) => c.id === selectedCandidateId) || candidates[0];
+
+  const handleRunAI = async () => {
+    if (!activeAddress || !transactionSigner) {
+      setErrorMsg("Please connect your wallet first!");
+      return;
+    }
+
+    setStatus('processing');
+    setErrorMsg('');
+
+    try {
+      const payload = {
+        job_description: searchQuery,
+        required_skills: ['Figma', 'Prototyping', 'User Research'], // Mock required skills
+        applicants: candidates.map(c => ({
+          freelancer_id: c.id,
+          freelancer_name: c.name,
+          portfolio_summary: c.summary,
+          skills: c.skills
+        }))
+      };
+
+      const result = await executeWithX402Payment(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/ai/rankPortfolio`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        },
+        activeAddress,
+        transactionSigner
+      );
+
+      if (result.top_rankings) {
+        // Update candidates with new scores
+        const newCandidates = [...candidates];
+        result.top_rankings.forEach(ranking => {
+          const idx = newCandidates.findIndex(c => c.id === ranking.freelancer_id);
+          if (idx !== -1) {
+            newCandidates[idx] = {
+              ...newCandidates[idx],
+              totalScore: ranking.match_score
+            };
+          }
+        });
+        
+        // Sort by totalScore descending
+        newCandidates.sort((a, b) => b.totalScore - a.totalScore);
+        
+        setCandidates(newCandidates);
+        setSelectedCandidateId(newCandidates[0]?.id);
+      }
+      setStatus('complete');
+    } catch (err) {
+      console.error(err);
+      setErrorMsg(err.message || 'Payment failed or was canceled.');
+      setStatus('error');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 sm:p-6 transition-colors">
@@ -112,6 +176,9 @@ export default function PortfolioMatcher() {
               <h1 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center space-x-2">
                 <span>AI Resume & Portfolio Matcher</span>
               </h1>
+              {errorMsg && (
+                <p className="text-red-500 text-sm font-semibold mt-2">{errorMsg}</p>
+              )}
             </div>
 
             <div className="flex items-center space-x-4 text-xs">
@@ -172,6 +239,14 @@ export default function PortfolioMatcher() {
                     autoMatch ? 'translate-x-5' : 'translate-x-0'
                   }`}
                 />
+              </button>
+              
+              <button 
+                onClick={handleRunAI}
+                disabled={status === 'processing' || status === 'signing'}
+                className="ml-4 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white text-sm font-bold rounded-xl shadow-lg cursor-pointer disabled:opacity-50"
+              >
+                {status === 'processing' ? 'Processing...' : status === 'signing' ? 'Please Sign...' : 'Run AI Ranker ($0.03)'}
               </button>
             </div>
           </div>

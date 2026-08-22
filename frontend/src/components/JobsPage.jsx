@@ -2,11 +2,31 @@ import { useState } from 'react';
 import PortfolioMatcher from './PortfolioMatcher';
 import JobEscrowManager from './JobEscrowManager';
 import PostOpportunity from './PostOpportunity';
+import BountyChallengeView from './BountyChallengeView';
+import { useEffect } from 'react';
 
 export default function JobsPage({ isLoggedIn, onOpenAuth }) {
   const [activeTab, setActiveTab] = useState('browse');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [bounties, setBounties] = useState([]);
+  const [selectedBounty, setSelectedBounty] = useState(null);
+
+  useEffect(() => {
+    fetchBounties();
+  }, []);
+
+  const fetchBounties = async () => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/bounties`);
+      if (res.ok) {
+        const data = await res.json();
+        setBounties(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch bounties", err);
+    }
+  };
 
   // Extended jobs dataset matching the Unstop / Naukri style
   const [jobs, setJobs] = useState([
@@ -71,6 +91,11 @@ export default function JobsPage({ isLoggedIn, onOpenAuth }) {
   };
 
   const handleJobCreated = (newJobData) => {
+    if (newJobData.type === 'bounty') {
+      fetchBounties();
+      setActiveTab('browse');
+      return;
+    }
     const newJob = {
       id: `JOB-${jobs.length + 101}`,
       title: newJobData.title,
@@ -307,18 +332,44 @@ export default function JobsPage({ isLoggedIn, onOpenAuth }) {
                   </button>
                 </div>
 
-                <div className="bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl p-5 text-white shadow-sm space-y-2">
-                  <span className="text-[10px] font-extrabold uppercase bg-white/20 px-2 py-0.5 rounded">Featured Challenge</span>
-                  <h4 className="text-sm font-bold">AI Poster Creation Challenge</h4>
-                  <p className="text-xs text-indigo-100 leading-relaxed">
-                    Submit your generative graphics for the PARVA rebranding event.
-                  </p>
-                  <div className="pt-2">
-                    <button className="px-3 py-1.5 bg-white text-indigo-700 font-bold text-xs rounded-xl shadow cursor-pointer hover:bg-indigo-50">
-                      View Challenge
-                    </button>
+                {bounties.length > 0 ? (
+                  <div className="space-y-4">
+                    {bounties.map((b) => (
+                      <div key={b.id} className="bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl p-5 text-white shadow-sm space-y-2">
+                        <div className="flex justify-between items-start">
+                          <span className="text-[10px] font-extrabold uppercase bg-white/20 px-2 py-0.5 rounded shadow-sm">Featured Challenge</span>
+                          {b.status === 'awarded' && <span className="text-[10px] font-black uppercase text-emerald-300">Awarded</span>}
+                        </div>
+                        <h4 className="text-sm font-bold">{b.title}</h4>
+                        <p className="text-xs text-indigo-100 leading-relaxed line-clamp-2">
+                          {b.description}
+                        </p>
+                        <p className="text-xs font-black text-emerald-300">Prize: {b.prize_algo} ALGO</p>
+                        <div className="pt-2">
+                          <button 
+                            onClick={() => setSelectedBounty(b)}
+                            className="px-3 py-1.5 bg-white text-indigo-700 font-bold text-xs rounded-xl shadow cursor-pointer hover:bg-indigo-50"
+                          >
+                            View Challenge
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-gradient-to-br from-indigo-600 to-purple-600 rounded-2xl p-5 text-white shadow-sm space-y-2">
+                    <span className="text-[10px] font-extrabold uppercase bg-white/20 px-2 py-0.5 rounded shadow-sm">Featured Challenge</span>
+                    <h4 className="text-sm font-bold">AI Poster Creation Challenge</h4>
+                    <p className="text-xs text-indigo-100 leading-relaxed">
+                      Submit your generative graphics for the PARVA rebranding event.
+                    </p>
+                    <div className="pt-2">
+                      <button className="px-3 py-1.5 bg-white/50 text-white font-bold text-xs rounded-xl shadow cursor-not-allowed">
+                        No Active Bounties
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -341,6 +392,15 @@ export default function JobsPage({ isLoggedIn, onOpenAuth }) {
           <div className="flex justify-center">
             <JobEscrowManager />
           </div>
+        )}
+
+        {/* Modal: Bounty View */}
+        {selectedBounty && (
+          <BountyChallengeView 
+            bounty={selectedBounty} 
+            onClose={() => setSelectedBounty(null)} 
+            onAwarded={() => fetchBounties()}
+          />
         )}
       </div>
     </div>

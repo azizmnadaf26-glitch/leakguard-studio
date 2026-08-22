@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-export default function HomePage({ setActivePage, isLoggedIn, onOpenAuth }) {
+export default function HomePage({ setActivePage, isLoggedIn, onOpenAuth, setSelectedArtistProfile, walletAddress }) {
   const [categories, setCategories] = useState([
     { name: 'Siesta', following: false },
     { name: 'Digital Art', following: false },
@@ -16,6 +16,11 @@ export default function HomePage({ setActivePage, isLoggedIn, onOpenAuth }) {
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [newArtTitle, setNewArtTitle] = useState('');
   const [newArtCategory, setNewArtCategory] = useState('Digital Art');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadError, setUploadError] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [newComment, setNewComment] = useState('');
 
   const [posts, setPosts] = useState([
     {
@@ -95,26 +100,97 @@ export default function HomePage({ setActivePage, isLoggedIn, onOpenAuth }) {
     }
   };
 
-  const handleArtSubmit = (e) => {
+  const handleArtSubmit = async (e) => {
     e.preventDefault();
+    setUploadError(null);
+
     if (!isLoggedIn) {
       onOpenAuth();
       return;
     }
-    const newPost = {
-      id: Date.now(),
-      artist: 'Sania Nadaf',
-      badge: 'CREATOR',
-      date: 'Today',
-      title: newArtTitle,
-      category: newArtCategory,
-      likes: 0,
-      comments: [],
-      image: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=800&q=80'
-    };
-    setPosts([newPost, ...posts]);
-    setNewArtTitle('');
-    setShowSubmitModal(false);
+    
+    if (!walletAddress) {
+      setUploadError('Please connect your wallet first to publish artwork.');
+      return;
+    }
+
+    if (!selectedFile) {
+      setUploadError('Please select an artwork file.');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('title', newArtTitle);
+      formData.append('category', newArtCategory);
+      formData.append('wallet_address', walletAddress);
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/ownership/register`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.status === 409) {
+        setUploadError(`🚨 AI Similarity Alert: This artwork matches an existing piece registered by ${data.detail.original_owner} on ${data.detail.registered_at}. Similarity score: ${(data.detail.similarity * 100).toFixed(2)}%.`);
+        setIsUploading(false);
+        return;
+      }
+
+      if (!response.ok) {
+        setUploadError(data.detail || 'Failed to publish artwork.');
+        setIsUploading(false);
+        return;
+      }
+
+      // Success
+      const newPost = {
+        id: Date.now(),
+        artist: 'Sania Nadaf', // Mock display name for prototype
+        badge: 'CREATOR',
+        date: 'Today',
+        title: newArtTitle,
+        category: newArtCategory,
+        likes: 0,
+        comments: [],
+        image: URL.createObjectURL(selectedFile) // show uploaded image locally
+      };
+      setPosts([newPost, ...posts]);
+      setNewArtTitle('');
+      setSelectedFile(null);
+      setShowSubmitModal(false);
+    } catch (err) {
+      setUploadError('Network error while uploading.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleCommentSubmit = (e) => {
+    e.preventDefault();
+    if (!newComment.trim() || !selectedPost) return;
+    
+    // Create new comment array
+    const updatedComments = [...selectedPost.comments, newComment];
+    
+    // Update local selectedPost state
+    setSelectedPost({ ...selectedPost, comments: updatedComments });
+    
+    // Update main posts array
+    setPosts(posts.map(p => 
+      p.id === selectedPost.id ? { ...p, comments: updatedComments } : p
+    ));
+    
+    setNewComment('');
+  };
+
+  const navigateToProfile = (artistName) => {
+    setSelectedArtistProfile(artistName);
+    setActivePage('profile');
+    setSelectedPost(null);
   };
 
   return (
@@ -166,6 +242,7 @@ export default function HomePage({ setActivePage, isLoggedIn, onOpenAuth }) {
               key={post.id}
               onClick={() => {
                 if (!isLoggedIn) onOpenAuth();
+                else setSelectedPost(post);
               }}
               className="relative group overflow-hidden rounded-xl break-inside-avoid cursor-pointer bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-800/80 shadow-sm"
             >
@@ -216,6 +293,132 @@ export default function HomePage({ setActivePage, isLoggedIn, onOpenAuth }) {
         </div>
       </main>
 
+      {/* Instagram-Style Artwork Detail Modal */}
+      {selectedPost && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-2 sm:p-6 lg:p-12">
+          <div className="bg-white dark:bg-slate-900 w-full h-full sm:h-auto max-h-full sm:rounded-2xl overflow-hidden flex flex-col md:flex-row relative shadow-2xl">
+            
+            {/* Close Button */}
+            <button 
+              onClick={() => setSelectedPost(null)}
+              className="absolute top-4 right-4 z-50 w-8 h-8 flex items-center justify-center bg-black/50 hover:bg-black/80 text-white rounded-full backdrop-blur-sm cursor-pointer transition-colors"
+            >
+              ✕
+            </button>
+
+            {/* Left Column: Artwork Image */}
+            <div className="w-full md:w-[60%] lg:w-[65%] h-[40vh] md:h-[80vh] bg-black flex items-center justify-center relative">
+              <img 
+                src={selectedPost.image} 
+                alt={selectedPost.title}
+                className="w-full h-full object-contain"
+              />
+            </div>
+
+            {/* Right Column: Social Feed & Details */}
+            <div className="w-full md:w-[40%] lg:w-[35%] h-[60vh] md:h-[80vh] flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
+              
+              {/* Header: Artist Info */}
+              <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div 
+                  onClick={() => navigateToProfile(selectedPost.artist)}
+                  className="flex items-center space-x-3 cursor-pointer group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold overflow-hidden border border-slate-200 dark:border-slate-700 group-hover:border-indigo-500 transition-colors">
+                    {selectedPost.artist.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                      {selectedPost.artist}
+                    </h3>
+                    <span className="text-[10px] text-slate-500">{selectedPost.date}</span>
+                  </div>
+                </div>
+                <button className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 cursor-pointer">
+                  Follow
+                </button>
+              </div>
+
+              {/* Scrollable Comments & Description */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+                {/* Description block */}
+                <div className="flex space-x-3">
+                  <div className="w-8 h-8 rounded-full bg-slate-200 shrink-0 flex justify-center items-center font-bold text-slate-500 text-xs">
+                    {selectedPost.artist.charAt(0)}
+                  </div>
+                  <div className="text-sm">
+                    <span 
+                      onClick={() => navigateToProfile(selectedPost.artist)}
+                      className="font-bold text-slate-900 dark:text-white cursor-pointer hover:underline mr-2"
+                    >
+                      {selectedPost.artist}
+                    </span>
+                    <span className="text-slate-700 dark:text-slate-300">
+                      Presenting <strong>{selectedPost.title}</strong>! Check out the details and let me know your thoughts. 
+                    </span>
+                    <div className="text-indigo-500 text-xs mt-1 font-semibold">
+                      #{selectedPost.category.replace(/\s+/g, '')} #DigitalArt #LeakGuard
+                    </div>
+                  </div>
+                </div>
+
+                {/* Render Comments */}
+                {selectedPost.comments.map((comment, idx) => (
+                  <div key={idx} className="flex space-x-3">
+                    <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 shrink-0" />
+                    <div className="text-sm text-slate-700 dark:text-slate-300">
+                      <span className="font-bold text-slate-900 dark:text-white mr-2">user_{Math.floor(Math.random()*900)+100}</span>
+                      {comment}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Footer: Actions & Add Comment */}
+              <div className="border-t border-slate-200 dark:border-slate-800 p-4 space-y-3 bg-slate-50 dark:bg-slate-900/50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4 text-xl">
+                    <button className="hover:text-slate-500 cursor-pointer">❤️</button>
+                    <button className="hover:text-slate-500 cursor-pointer">💬</button>
+                    <button className="hover:text-slate-500 cursor-pointer">↗️</button>
+                  </div>
+                  <span className="font-bold text-sm">{selectedPost.likes} likes</span>
+                </div>
+                
+                {/* Purchase Action Button */}
+                <button 
+                  onClick={() => {
+                    setSelectedPost(null);
+                    setActivePage('shop');
+                  }}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  🛒 Purchase Art License
+                </button>
+
+                <form onSubmit={handleCommentSubmit} className="relative pt-2">
+                  <input 
+                    type="text" 
+                    placeholder="Add a comment..."
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    className="w-full bg-transparent text-sm p-2 outline-none border-b border-slate-300 dark:border-slate-700 focus:border-indigo-500 dark:text-white"
+                  />
+                  <button 
+                    type="submit" 
+                    disabled={!newComment.trim()}
+                    className="absolute right-2 top-4 text-sm font-bold text-indigo-600 disabled:opacity-50 cursor-pointer"
+                  >
+                    Post
+                  </button>
+                </form>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Submit Art Modal */}
       {showSubmitModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -249,15 +452,34 @@ export default function HomePage({ setActivePage, isLoggedIn, onOpenAuth }) {
                 </select>
               </div>
 
-              <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 p-6 rounded-xl text-center text-xs text-slate-500 dark:text-slate-400">
-                📁 Click to select file or drag & drop artwork image
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">Artwork File</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => setSelectedFile(e.target.files[0])}
+                  className="w-full p-2 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                  required
+                />
+                {selectedFile && (
+                  <div className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                    Selected: {selectedFile.name}
+                  </div>
+                )}
               </div>
+
+              {uploadError && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl font-medium">
+                  {uploadError}
+                </div>
+              )}
 
               <button
                 type="submit"
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer"
+                disabled={isUploading}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs transition-all shadow-md cursor-pointer disabled:opacity-50"
               >
-                Publish Artwork
+                {isUploading ? 'Publishing...' : 'Publish Artwork'}
               </button>
             </form>
           </div>

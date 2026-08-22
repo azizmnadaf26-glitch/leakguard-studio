@@ -1,13 +1,19 @@
 import { useState } from 'react';
 import WalletConnect from './WalletConnect';
+import { useWallet } from '@txnlab/use-wallet-react';
+import { executeWithX402Payment } from '../utils/x402Payment';
 
-export default function Navbar({ activePage, setActivePage, isLoggedIn, onLogout, onOpenAuth, walletAddress, setWalletAddress }) {
+export default function Navbar({ activePage, setActivePage, isLoggedIn, onLogout, onOpenAuth, walletAddress, setWalletAddress, setSearchResults }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [selectedLang, setSelectedLang] = useState('English');
   const [tempLang, setTempLang] = useState('English');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchError, setSearchError] = useState(null);
+
+  const { activeAddress, transactionSigner } = useWallet();
 
   const languages = ['English', 'Español', 'Deutsch', 'Français', 'Português', 'Nederlands'];
 
@@ -19,6 +25,46 @@ export default function Navbar({ activePage, setActivePage, isLoggedIn, onLogout
     { id: 'profile', label: 'Profile', icon: '👤' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+
+    if (!activeAddress) {
+      alert("Please connect your wallet first to use AI Search.");
+      return;
+    }
+
+    setSearchError(null);
+    setSearchResults(null);
+    
+    // Switch to search view immediately so user sees loading state
+    setActivePage('search');
+
+    try {
+      const result = await executeWithX402Payment(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/ai/searchArtworks`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ prompt: searchQuery }),
+        },
+        activeAddress,
+        transactionSigner
+      );
+      setSearchResults(result);
+    } catch (err) {
+      console.error("Search failed:", err);
+      // If payment fails or is cancelled, we might just want to kick them back to home
+      if (err.message && err.message.includes("cancel")) {
+        setActivePage('home');
+      } else {
+        alert("Payment or search failed: " + err.message);
+      }
+    }
+  };
 
   return (
     <nav className="sticky top-0 z-50 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex items-center justify-between transition-colors shadow-sm">
@@ -39,12 +85,18 @@ export default function Navbar({ activePage, setActivePage, isLoggedIn, onLogout
 
         {/* Global Search Bar */}
         <div className="relative hidden sm:block">
-          <input
-            type="text"
-            placeholder="Search artists, jobs, tutorials, assets..."
-            className="w-64 md:w-80 pl-9 pr-4 py-1.5 text-xs rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-          />
-          <span className="absolute left-3 top-2 text-xs text-slate-400">🔍</span>
+          <form onSubmit={handleSearch}>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search AI Artworks (e.g., moody cyberpunk city)..."
+              className="w-64 md:w-80 pl-9 pr-4 py-1.5 text-xs rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+            />
+            <button type="submit" className="absolute left-3 top-2 text-xs text-slate-400 cursor-pointer">
+              🔍
+            </button>
+          </form>
         </div>
       </div>
 
@@ -97,6 +149,12 @@ export default function Navbar({ activePage, setActivePage, isLoggedIn, onLogout
                 className="w-full text-left px-4 py-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center space-x-2.5"
               >
                 <span>🔍</span> <span>AI Leak Detector</span>
+              </button>
+              <button
+                onClick={() => { setActivePage('matcher'); setIsMoreMenuOpen(false); }}
+                className="w-full text-left px-4 py-2.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center space-x-2.5"
+              >
+                <span>🤖</span> <span>AI Portfolio Matcher</span>
               </button>
               <div className="border-t border-slate-100 dark:border-slate-800 my-1"></div>
               <button

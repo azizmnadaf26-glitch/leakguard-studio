@@ -1,15 +1,18 @@
 import { useState } from 'react';
 
-export default function ProfilePage({ isLoggedIn, onOpenAuth }) {
+export default function ProfilePage({ isLoggedIn, onOpenAuth, selectedArtistProfile }) {
   const [activeTab, setActiveTab] = useState('home'); // 'home', 'projects', 'store', 'posts', 'wallet', 'escrow', 'verifier'
   const [isEditing, setIsEditing] = useState(false);
+
+  // Check if viewing own profile (mock check)
+  const isOwnProfile = !selectedArtistProfile || selectedArtistProfile === 'Sania Nadaf';
 
   // Community Post Form State
   const [postText, setPostText] = useState('');
   const [postsList, setPostsList] = useState([
     {
       id: 1,
-      author: 'Sania Nadaf',
+      author: selectedArtistProfile || 'Sania Nadaf',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
       time: '2 hours ago',
       content: 'Just finalized the brand guidelines and logo vector assets for the PARVA rebranding! 🎨 Check out the store tab for downloads.',
@@ -17,7 +20,7 @@ export default function ProfilePage({ isLoggedIn, onOpenAuth }) {
     },
     {
       id: 2,
-      author: 'Sania Nadaf',
+      author: selectedArtistProfile || 'Sania Nadaf',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
       time: 'Yesterday',
       content: 'Achieved 94% accuracy on the multivariate energy time-series prediction model using PyTorch! 🤖',
@@ -32,8 +35,8 @@ export default function ProfilePage({ isLoggedIn, onOpenAuth }) {
 
   // Profile Information
   const userProfile = {
-    name: 'Sania Nadaf',
-    handle: '@sanianadaf',
+    name: selectedArtistProfile || 'Sania Nadaf',
+    handle: selectedArtistProfile ? `@${selectedArtistProfile.replace(/\s+/g, '').toLowerCase()}` : '@sanianadaf',
     role: 'AI/ML Student & UI/UX Designer',
     college: 'PES College of Engineering, Mandya',
     location: 'Mandya, Karnataka, India',
@@ -181,16 +184,38 @@ export default function ProfilePage({ isLoggedIn, onOpenAuth }) {
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center space-x-3 self-start sm:self-auto">
-                <button
-                  onClick={() => setIsEditing(!isEditing)}
-                  className="px-4 py-2 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
-                >
-                  {isEditing ? 'Save Profile' : 'Edit Profile'}
-                </button>
-                <button className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer">
-                  + Upload Work
-                </button>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 self-start sm:self-auto">
+                {isOwnProfile ? (
+                  <>
+                    <button
+                      onClick={() => setIsEditing(!isEditing)}
+                      className="px-4 py-2 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                    >
+                      {isEditing ? 'Save Profile' : 'Edit Profile'}
+                    </button>
+                    <button className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer">
+                      + Upload Work
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center space-x-1">
+                      <span>💼</span>
+                      <span>Hire Artist</span>
+                    </button>
+                    <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center space-x-1">
+                      <span>✉️</span>
+                      <span>Message</span>
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('store')}
+                      className="px-4 py-2 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center space-x-1"
+                    >
+                      <span>🛒</span>
+                      <span>Buy Art</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 

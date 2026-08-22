@@ -1,28 +1,102 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useWallet } from '@txnlab/use-wallet-react';
+import algosdk from 'algosdk';
 
-export default function SellArtModal() {
-  const [artTitle, setArtTitle] = useState('');
-  const [category, setCategory] = useState('Digital Illustration');
-  const [price, setPrice] = useState('1200');
-  const [licenseType, setLicenseType] = useState('Standard Commercial');
-  const [description, setDescription] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
+export default function SellArtModal({ isLoggedIn, onOpenAuth }) {
+  const [myAssets, setMyAssets] = useState([]);
+  const [selectedAsset, setSelectedAsset] = useState(null);
+  const [price, setPrice] = useState('10'); // ALGO
+  const [isListing, setIsListing] = useState(false);
+  const [listingSuccess, setListingSuccess] = useState(false);
 
-  const handleSubmit = (e) => {
+  const { activeAddress, transactionSigner } = useWallet();
+
+  useEffect(() => {
+    if (activeAddress) {
+      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/ownership/my-assets?wallet=${activeAddress}`)
+        .then(res => res.json())
+        .then(data => setMyAssets(data))
+        .catch(err => console.error("Failed to fetch assets", err));
+    }
+  }, [activeAddress]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    alert(`Asset "${artTitle || 'Untitled Art'}" successfully listed on the marketplace for ₹${price}!`);
+    if (!isLoggedIn) {
+      onOpenAuth();
+      return;
+    }
+    if (!selectedAsset) {
+      alert("Please select an asset to list.");
+      return;
+    }
+
+    setIsListing(true);
+    setListingSuccess(false);
+
+    try {
+      // 1. Build listing tx
+      const buildRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/marketplace/list/build`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          asset_hash: selectedAsset.asset_hash,
+          asa_id: selectedAsset.asa_id,
+          seller_wallet: activeAddress,
+          price_algo: parseFloat(price)
+        })
+      });
+      if (!buildRes.ok) throw new Error(await buildRes.text());
+      const buildData = await buildRes.json();
+      
+      // 2. Sign tx
+      const txnBytes = Uint8Array.from(atob(buildData.transaction), c => c.charCodeAt(0));
+      const signedTxn = await transactionSigner([txnBytes]);
+      
+      // 3. Send tx directly to network
+      const algodClient = new algosdk.Algodv2("", "https://testnet-api.algonode.cloud", "");
+      const sendResult = await algodClient.sendRawTransaction(signedTxn[0]).do();
+      const txId = sendResult.txId || sendResult.txid;
+      if (!txId) {
+          console.error("sendResult:", sendResult);
+          throw new Error("Transaction sent but no txId returned!");
+      }
+      
+      // 4. Confirm listing
+      const confirmRes = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/marketplace/list/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          asset_hash: selectedAsset.asset_hash,
+          asa_id: selectedAsset.asa_id,
+          seller_wallet: activeAddress,
+          price_algo: parseFloat(price),
+          tx_id: txId
+        })
+      });
+      if (!confirmRes.ok) throw new Error(await confirmRes.text());
+      
+      setListingSuccess(true);
+      setSelectedAsset(null);
+      setPrice('10');
+    } catch (err) {
+      alert("Listing failed: " + err.message);
+      console.error(err);
+    } finally {
+      setIsListing(false);
+    }
   };
 
   return (
     <div className="w-full min-h-[calc(100vh-64px)] bg-slate-950 text-slate-100 p-6 sm:p-10 font-sans">
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="max-w-3xl mx-auto space-y-6">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-black text-white tracking-tight">Creator Listing Studio</h1>
             <p className="text-xs text-slate-400 mt-1">
-              Publish and sell your original artwork—set your price and start earning
+              Escrow your digital asset and list it on the marketplace!
             </p>
           </div>
           <span className="self-start sm:self-center text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full">
@@ -30,130 +104,60 @@ export default function SellArtModal() {
           </span>
         </div>
 
-        {/* Main 2-Column Studio Grid */}
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-900/60 border border-slate-800 rounded-3xl p-8 min-h-[480px] shadow-2xl">
-          
-          {/* Left Column: Asset Details Input (6 Cols) */}
-          <div className="lg:col-span-6 flex flex-col justify-between space-y-5 border-r-0 lg:border-r border-slate-800/80 pr-0 lg:pr-8">
-            <div className="space-y-4">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Listing Details</span>
-
-              {/* Artwork Title */}
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Artwork Title</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Cyberpunk Neon Cityscape Vector"
-                  value={artTitle}
-                  onChange={(e) => setArtTitle(e.target.value)}
-                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                  required
-                />
-              </div>
-
-              {/* Category & Price */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Category</label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none cursor-pointer"
-                  >
-                    <option value="Digital Illustration">Digital Illustration</option>
-                    <option value="UI/UX Design Kit">UI/UX Design Kit</option>
-                    <option value="AI Prompts & Models">AI Prompts & Models</option>
-                    <option value="Vector & Brand Assets">Vector & Brand Assets</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Price (INR)</label>
-                  <input
-                    type="number"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-emerald-400 focus:outline-none focus:border-indigo-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* License Type */}
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">License Type</label>
-                <select
-                  value={licenseType}
-                  onChange={(e) => setLicenseType(e.target.value)}
-                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none cursor-pointer"
-                >
-                  <option value="Standard Commercial">Standard Commercial License</option>
-                  <option value="Extended Enterprise">Extended Enterprise License</option>
-                  <option value="Personal / Student">Personal / Student Use</option>
-                </select>
-              </div>
-
-              {/* Description */}
-              <div className="space-y-1.5">
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Description & File Details</label>
-                <textarea
-                  rows={2}
-                  placeholder="Describe resolution, included formats (PNG, SVG, PSD)..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-indigo-500 resize-none"
-                />
-              </div>
-            </div>
+        {listingSuccess && (
+          <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 font-bold text-sm">
+            Asset successfully transferred to escrow and listed on the marketplace!
           </div>
+        )}
 
-          {/* Right Column: File Upload + Live Preview Card (6 Cols) */}
-          <div className="lg:col-span-6 flex flex-col justify-between pl-0 lg:pl-8 space-y-6">
-            <div className="space-y-5">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Asset File & Preview</span>
-
-              {/* High-Res Asset Upload Box */}
-              <div className="border-2 border-dashed border-indigo-500/40 hover:border-indigo-500 rounded-2xl p-6 text-center transition-all bg-slate-950/60 relative group cursor-pointer">
-                <input
-                  type="file"
-                  onChange={(e) => e.target.files && setSelectedFile(e.target.files[0])}
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
-                />
-                <div className="space-y-2">
-                  <div className="w-12 h-12 mx-auto rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-2xl animate-bounce">
-                    📦
-                  </div>
-                  <span className="text-xs font-bold text-slate-200 block">
-                    {selectedFile ? selectedFile.name : 'Drop ZIP or High-Res Artwork here'}
-                  </span>
-                  <span className="text-[10px] text-slate-500 block">Protected via LeakGuard SHA-256 Hash</span>
-                </div>
-              </div>
-
-              {/* Live Listing Card Preview */}
-              <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800/80 space-y-3">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Listing Preview</span>
-                <div className="w-full h-32 bg-gradient-to-tr from-indigo-900/30 to-purple-900/30 rounded-xl border border-slate-800 flex items-center justify-center text-4xl">
-                  🎨
-                </div>
-                <div className="flex justify-between items-center font-bold">
-                  <span className="text-white text-xs truncate">{artTitle || 'Untitled Art'}</span>
-                  <span className="text-emerald-400 font-mono text-xs">₹{Number(price || 0).toLocaleString()}</span>
-                </div>
-                <span className="text-[10px] text-slate-500 block font-mono">{category} • {licenseType}</span>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 cursor-pointer transition-all active:scale-[0.99] mt-2"
+        <form onSubmit={handleSubmit} className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 shadow-2xl space-y-6">
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Select Registered Asset</label>
+            <select
+              value={selectedAsset ? selectedAsset.asset_hash : ""}
+              onChange={(e) => {
+                const asset = myAssets.find(a => a.asset_hash === e.target.value);
+                setSelectedAsset(asset || null);
+              }}
+              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 focus:outline-none cursor-pointer"
+              required
             >
-              List Asset on Marketplace
-            </button>
+              <option value="">-- Choose an Asset --</option>
+              {myAssets.map(asset => (
+                <option key={asset.asset_hash} value={asset.asset_hash}>
+                  {asset.title || 'Untitled'} (ASA ID: {asset.asa_id})
+                </option>
+              ))}
+            </select>
           </div>
 
-        </form>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">Price (ALGO)</label>
+            <div className="relative">
+              <span className="absolute left-3 top-3 text-emerald-400 font-bold text-xs">A</span>
+              <input
+                type="number"
+                step="0.1"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                className="w-full pl-8 p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold text-emerald-400 focus:outline-none focus:border-indigo-500"
+                required
+              />
+            </div>
+          </div>
+          
+          <p className="text-xs text-slate-500">
+            Note: By listing this asset, you will sign a transaction to transfer it to the platform's escrow wallet. When it sells, the ALGO will be automatically sent to your wallet.
+          </p>
 
+          <button
+            type="submit"
+            disabled={isListing}
+            className={`w-full py-3.5 text-white font-bold text-xs rounded-xl shadow-lg cursor-pointer transition-all active:scale-[0.99] mt-2 ${isListing ? 'bg-indigo-500/50 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'}`}
+          >
+            {isListing ? 'Escrowing & Listing...' : 'List Asset on Marketplace'}
+          </button>
+        </form>
       </div>
     </div>
   );
