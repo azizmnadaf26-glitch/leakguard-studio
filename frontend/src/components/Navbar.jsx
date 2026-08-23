@@ -11,6 +11,7 @@ export default function Navbar({ activePage, setActivePage, isLoggedIn, onLogout
   const [selectedLang, setSelectedLang] = useState('English');
   const [tempLang, setTempLang] = useState('English');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchScope, setSearchScope] = useState('artworks');
   const [searchError, setSearchError] = useState(null);
 
   const { activeAddress, transactionSigner } = useWallet();
@@ -42,8 +43,12 @@ export default function Navbar({ activePage, setActivePage, isLoggedIn, onLogout
     setActivePage('search');
 
     try {
+      const endpoint = searchScope === 'creators' 
+        ? '/api/ai/searchCreators' 
+        : '/api/ai/searchArtworks';
+        
       const result = await executeWithX402Payment(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/ai/searchArtworks`,
+        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}${endpoint}`,
         {
           method: "POST",
           headers: {
@@ -54,7 +59,9 @@ export default function Navbar({ activePage, setActivePage, isLoggedIn, onLogout
         activeAddress,
         transactionSigner
       );
-      setSearchResults(result);
+      
+      // Add type to the result so the gallery knows what to render
+      setSearchResults({ ...result, type: searchScope });
     } catch (err) {
       console.error("Search failed:", err);
       // If payment fails or is cancelled, we might just want to kick them back to home
@@ -85,17 +92,29 @@ export default function Navbar({ activePage, setActivePage, isLoggedIn, onLogout
 
         {/* Global Search Bar */}
         <div className="relative hidden sm:block">
-          <form onSubmit={handleSearch}>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search AI Artworks (e.g., moody cyberpunk city)..."
-              className="w-64 md:w-80 pl-9 pr-4 py-1.5 text-xs rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-            />
-            <button type="submit" className="absolute left-3 top-2 text-xs text-slate-400 cursor-pointer">
-              🔍
-            </button>
+          <form onSubmit={handleSearch} className="flex items-center space-x-2">
+            <div className="relative flex items-center">
+              <select 
+                value={searchScope}
+                onChange={(e) => setSearchScope(e.target.value)}
+                className="absolute left-0 top-0 bottom-0 h-full pl-3 pr-6 py-1.5 text-xs font-bold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-none rounded-l-full focus:outline-none appearance-none z-10 cursor-pointer"
+              >
+                <option value="artworks">Art</option>
+                <option value="creators">Creators</option>
+              </select>
+              <div className="absolute left-[65px] top-1/2 -translate-y-1/2 text-[10px] pointer-events-none z-10 text-slate-500">▼</div>
+              
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={searchScope === 'creators' ? "Search Creator Skills (e.g., ui design)..." : "Search AI Artworks (e.g., moody cyberpunk city)..."}
+                className="w-64 md:w-80 pl-[90px] pr-8 py-1.5 text-xs rounded-full border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+              <button type="submit" className="absolute right-3 top-2 text-xs text-slate-400 cursor-pointer">
+                🔍
+              </button>
+            </div>
           </form>
         </div>
       </div>

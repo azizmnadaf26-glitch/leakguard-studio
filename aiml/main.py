@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import leak_detection, rank_portfolio, ownership, search_artworks, marketplace, bounties, escrow
+from routers import leak_detection, rank_portfolio, ownership, search_artworks, search_creators, marketplace, bounties, escrow
 import os
 from dotenv import load_dotenv
 from x402 import x402ResourceServer, FacilitatorConfig
@@ -170,6 +170,7 @@ app.include_router(leak_detection.router)
 app.include_router(rank_portfolio.router)
 app.include_router(ownership.router)
 app.include_router(search_artworks.router)
+app.include_router(search_creators.router)
 app.include_router(marketplace.router)
 app.include_router(bounties.router)
 app.include_router(escrow.router)
@@ -208,6 +209,14 @@ protected_routes = {
         }
     },
     "POST /api/ai/searchArtworks": {
+        "accepts": {
+            "scheme": "exact",
+            "payTo": AVM_ADDRESS,
+            "price": "0.01",
+            "network": caip2_network,
+        }
+    },
+    "POST /api/ai/searchCreators": {
         "accepts": {
             "scheme": "exact",
             "payTo": AVM_ADDRESS,
