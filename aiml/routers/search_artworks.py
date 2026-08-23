@@ -63,7 +63,7 @@ async def search_artworks(payload: SearchRequest, request: Request):
     ranked_artworks = []
     
     async with db.acquire() as conn:
-        records = await conn.fetch('SELECT asset_hash, wallet_address, title, category, tags, asa_id FROM fingerprints')
+        records = await conn.fetch('SELECT asset_hash, wallet_address, title, category, tags, asa_id, image_base64 FROM fingerprints')
         for r in records:
             # Combine title, category, and tags into one searchable word set
             artwork_words = set()
@@ -81,10 +81,10 @@ async def search_artworks(payload: SearchRequest, request: Request):
             if jaccard_similarity > 0 or len(search_words) == 0:
                 match_score = round(30.0 + (jaccard_similarity * 70.0), 2)
                 
-                # We can generate a deterministic placeholder image using the asset_hash 
-                # so it looks like a real gallery on the frontend!
+                # We use the real uploaded image if it exists, otherwise a deterministic placeholder
                 seed = r['asset_hash'][:10] if r['asset_hash'] else "default"
-                mock_image_url = f"https://picsum.photos/seed/{seed}/400/300"
+                real_image = r.get('image_base64')
+                image_url = real_image if real_image else f"https://picsum.photos/seed/{seed}/400/300"
                 
                 ranked_artworks.append({
                     "asset_hash": r['asset_hash'],
@@ -92,7 +92,7 @@ async def search_artworks(payload: SearchRequest, request: Request):
                     "title": r['title'] or "Untitled",
                     "category": r['category'] or "Uncategorized",
                     "asa_id": r['asa_id'],
-                    "image": mock_image_url,
+                    "image": image_url,
                     "match_score": match_score,
                     "matched_tags": list(intersection) if intersection else []
                 })
