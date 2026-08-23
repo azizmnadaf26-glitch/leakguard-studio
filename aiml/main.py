@@ -36,6 +36,11 @@ async def lifespan(app: FastAPI):
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Add image_base64 column to persist artwork images
+        try:
+            await conn.execute('ALTER TABLE fingerprints ADD COLUMN image_base64 TEXT')
+        except asyncpg.exceptions.DuplicateColumnError:
+            pass
         
         # Seamlessly upgrade existing table if it was created previously
         await conn.execute('''

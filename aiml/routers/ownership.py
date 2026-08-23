@@ -1,5 +1,8 @@
 from fastapi import APIRouter, UploadFile, File, Form, Request, HTTPException, status
 import hashlib
+import base64
+from io import BytesIO
+from PIL import Image
 import asyncpg
 import numpy as np
 import os
@@ -95,15 +98,25 @@ async def register_asset(
             except Exception as e:
                 print(f"ASA Minting failed: {e}")
 
+        # Create a compressed base64 thumbnail to save in DB for the feed
+        try:
+            img = Image.open(BytesIO(contents)).convert("RGB")
+            img.thumbnail((400, 400)) # Resize to max 400x400
+            buffered = BytesIO()
+            img.save(buffered, format="JPEG", quality=75)
+            img_b64 = "data:image/jpeg;base64," + base64.b64encode(buffered.getvalue()).decode("utf-8")
+        except Exception:
+            img_b64 = None
+
         # If no match found, save to PostgreSQL
         try:
             await conn.execute(
                 '''
-                INSERT INTO fingerprints (asset_hash, wallet_address, title, category, embedding, asa_id) 
-                VALUES ($1, $2, $3, $4, $5, $6)
-                ON CONFLICT (asset_hash) DO NOTHING
+                INSERT INTO fingerprints (asset_hash, wallet_address, title, category, embedding, asa_id, image_base64) 
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (asset_hash) DO UPDATE SET image_base64 = EXCLUDED.image_base64
                 ''',
-                sha256_hash, wallet_address, title, category, embedding, asa_id
+                sha256_hash, wallet_address, title, category, embedding, asa_id, img_b64
             )
         except asyncpg.PostgresError as e:
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
@@ -210,7 +223,7 @@ async def get_feed(request: Request):
     db = request.app.state.db
     async with db.acquire() as conn:
         records = await conn.fetch('''
-            SELECT asset_hash, wallet_address, title, category, created_at, asa_id 
+            SELECT asset_hash, wallet_address, title, category, created_at, asa_id, image_base64 
             FROM fingerprints 
             ORDER BY created_at DESC 
             LIMIT 50
@@ -225,7 +238,7 @@ async def get_feed(request: Request):
                 "full_address": r['wallet_address'],
                 "title": r['title'] if r['title'] else f"Artwork {r['asset_hash'][:6]}",
                 "category": r['category'],
-                "image": f"https://picsum.photos/seed/{r['asset_hash']}/600/400", # Deterministic placeholder since we don't store actual images
+                "image": r['image_base64'] if r.get('image_base64') else f"https://picsum.photos/seed/{r['asset_hash']}/600/400", 
                 "likes": hash(r['asset_hash']) % 1000,
                 "comments": [],
                 "created_at": r['created_at'].isoformat() if r['created_at'] else None
