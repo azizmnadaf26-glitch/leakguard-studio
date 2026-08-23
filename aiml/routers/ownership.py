@@ -231,11 +231,18 @@ async def get_feed(request: Request):
         
         posts = []
         for r in records:
+            # Map wallet addresses to profile names for the demo
+            wallet = r['wallet_address']
+            if wallet == "T4QAY62C7BPPI6GZB6QWOGO7P73FKGZSCW7GQTOQ5CE6KX3GH6G4CQDNEI":
+                artist_name = "Sania Nadaf"
+            else:
+                artist_name = f"Creator {wallet[-4:]}"
+                
             # Format the data to match the mock posts structure the frontend expects
             posts.append({
                 "id": r['asset_hash'],
-                "artist": r['wallet_address'][:8] + "...", # Mask the full address
-                "full_address": r['wallet_address'],
+                "artist": artist_name,
+                "full_address": wallet,
                 "title": r['title'] if r['title'] else f"Artwork {r['asset_hash'][:6]}",
                 "category": r['category'],
                 "image": r['image_base64'] if r.get('image_base64') else f"https://picsum.photos/seed/{r['asset_hash']}/600/400", 
