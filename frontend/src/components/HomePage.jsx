@@ -89,7 +89,6 @@ export default function HomePage({ setActivePage, isLoggedIn, onOpenAuth, setSel
       comments: ['Love the character expression!'],
       image: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=800&q=80'
     }
-    }
   ]);
 
   useEffect(() => {
