@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function HomePage({ setActivePage, isLoggedIn, onOpenAuth, setSelectedArtistProfile, walletAddress }) {
   const [categories, setCategories] = useState([
@@ -89,7 +89,27 @@ export default function HomePage({ setActivePage, isLoggedIn, onOpenAuth, setSel
       comments: ['Love the character expression!'],
       image: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=800&q=80'
     }
+    }
   ]);
+
+  useEffect(() => {
+    const fetchFeed = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/ownership/feed`);
+        if (response.ok) {
+          const feedData = await response.json();
+          setPosts(prevPosts => {
+            // Filter out any mock posts that might have the same ID to avoid duplicates (though unlikely)
+            const newPosts = feedData.filter(fp => !prevPosts.some(p => p.id === fp.id));
+            return [...newPosts, ...prevPosts];
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch feed:", err);
+      }
+    };
+    fetchFeed();
+  }, []);
 
   const toggleCategoryFollow = (index) => {
     if (!isLoggedIn) onOpenAuth();

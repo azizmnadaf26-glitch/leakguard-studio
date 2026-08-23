@@ -204,3 +204,31 @@ async def get_my_assets(wallet: str, request: Request):
         ''', wallet)
         
         return [dict(r) for r in records]
+
+@router.get("/feed")
+async def get_feed(request: Request):
+    db = request.app.state.db
+    async with db.acquire() as conn:
+        records = await conn.fetch('''
+            SELECT asset_hash, wallet_address, title, category, created_at, asa_id 
+            FROM fingerprints 
+            ORDER BY created_at DESC 
+            LIMIT 50
+        ''')
+        
+        posts = []
+        for r in records:
+            # Format the data to match the mock posts structure the frontend expects
+            posts.append({
+                "id": r['asset_hash'],
+                "artist": r['wallet_address'][:8] + "...", # Mask the full address
+                "full_address": r['wallet_address'],
+                "title": r['title'] if r['title'] else f"Artwork {r['asset_hash'][:6]}",
+                "category": r['category'],
+                "image": f"https://picsum.photos/seed/{r['asset_hash']}/600/400", # Deterministic placeholder since we don't store actual images
+                "likes": hash(r['asset_hash']) % 1000,
+                "comments": [],
+                "created_at": r['created_at'].isoformat() if r['created_at'] else None
+            })
+            
+        return posts
