@@ -49,8 +49,8 @@ export async function executeWithX402Payment(url, options, activeAddress, transa
       assetIndex: parseInt(paymentReq.asset),
       suggestedParams: {
         ...params,
-        fee: paymentReq.extra?.feePayer ? 0 : params.fee,
-        flatFee: paymentReq.extra?.feePayer ? true : false,
+        fee: params.fee,
+        flatFee: false,
       },
     });
   } catch (innerErr) {
